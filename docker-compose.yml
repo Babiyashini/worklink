@@ -1,0 +1,89 @@
+services:
+  mysql:
+    image: mysql:8.0
+    mem_limit: 512m
+    cpus: 1.0
+    container_name: mysql_container
+    restart: always
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    ports:
+      - "3306:3306"
+
+    networks:
+      - worklink_network
+
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    image: workline/backend:1.0
+    mem_limit: 512m
+    cpus: 0.5
+    container_name: worklinebackend_container
+    restart: always
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/worklink
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+    ports:
+      - "8090:8090"
+
+    networks:
+      - worklink_network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    image: workline/frontend:1.0
+    mem_limit: 256m
+    cpus: 0.5
+    container_name: worklinefrontend_container
+    restart: always
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    networks:
+      - worklink_network
+
+    volumes:
+      - ./config.json:/usr/share/nginx/html/assets/config.json
+
+    ports:
+      - "80:80"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mysql_data:
+
+networks:
+  worklink_network:
+    driver: bridge
